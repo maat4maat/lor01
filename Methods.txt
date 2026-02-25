@@ -1,0 +1,286 @@
+Для анализа данных в R можно использовать различные пакеты, в зависимости от выбранного метода. Ниже представлены примеры кода для каждого из методов, упомянутых выше.
+
+### 1. Анализ повторных измерений (Repeated Measures ANOVA)
+
+Для начала, убедимся, что данные находятся в правильном формате (длинном формате), где каждая строка представляет собой одно измерение.
+
+```R
+# Установка пакета, если он еще не установлен
+if (!require("reshape2")) install.packages("reshape2", dependencies=TRUE)
+library(reshape2)
+
+# Пример данных
+data <- data.frame(
+  id = rep(1:10, each=20),
+  group = rep(c("A", "B"), each=10),
+  time = rep(c("Pre", "Post", "3m", "12m"), each=5, times=10),
+  location = rep(1:5, times=40),
+  cell_count = rnorm(200, mean=50, sd=10)  # случайные данные о количестве клеток
+)
+
+# Преобразование данных в длинный формат
+data_long <- melt(data, id.vars = c("id", "group", "time", "location"))
+
+# Проведение ANOVA
+if (!require("ez")) install.packages("ez", dependencies=TRUE)
+library(ez)
+anova_results <- ezANOVA(data = data_long, dv = .(value), wid = .(id), within = .(time, location), between = .(group), type = 3)
+print(anova_results)
+```
+
+### 2. Многоуровневый анализ (Hierarchical Linear Modeling)
+
+```R
+# Установка пакета lme4 для многоуровневого анализа
+if (!require("lme4")) install.packages("lme4", dependencies=TRUE)
+library(lme4)
+
+# Модель смешанных эффектов
+model <- lmer(cell_count ~ time * group + (1 | id/location), data = data)
+summary(model)
+```
+
+### 3. Обобщенные оценочные уравнения (GEE)
+
+```R
+# Установка пакета geepack
+if (!require("geepack")) install.packages("geepack", dependencies=TRUE)
+library(geepack)
+
+# GEE модель
+gee_model <- geeglm(cell_count ~ time * group, id=id, data=data, family=poisson(link="log"))
+summary(gee_model)
+```
+
+### 4. Модели смешанных эффектов (Mixed-effects models)
+
+```R
+# Использование того же пакета lme4
+mixed_model <- lmer(cell_count ~ time * group + (1 + time | id), data = data)
+summary(mixed_model)
+```
+
+Эти примеры предоставляют базовый каркас для анализа данных с использованием различных статистических методов в R. Вам может потребоваться дополнительная настройка моделей в зависимости от специфики ваших данных и исследовательских вопросов.
+
+
+
+Для анализа таких данных, где у каждого пациента есть множество измерений в разные временные точки и разные поля в каждом образце, можно использовать модели смешанных эффектов, которые позволяют учесть как внутригрупповые, так и межгрупповые корреляции. Вот как можно модифицировать предыдущий пример кода на R для анализа вашего датасета с использованием пакета `lme4`:
+
+### Подготовка данных
+Для начала убедимся, что данные правильно организованы для анализа. Данные должны быть в длинном формате, где каждая строка представляет собой одно наблюдение (одно поле в одном образце для одного пациента в одну временную точку).
+
+```R
+# Пример данных
+df <- data.frame(
+  PatientID = rep(1:10, each=20),
+  Group = rep(rep(c("A", "B"), each=10), each=20),
+  Time = rep(rep(c("PreOp", "PostOp", "3Months", "12Months"), each=5), times=10),
+  Field = rep(1:5, times=40),
+  CellCount = rnorm(200, mean=50, sd=10)  # случайные данные для примера
+)
+
+# Убедимся, что 'Time' и 'Group' являются факторами
+df$Time <- as.factor(df$Time)
+df$Group <- as.factor(df$Group)
+df$Field <- as.factor(df$Field)
+```
+
+### Модель смешанных эффектов
+Теперь создадим модель смешанных эффектов, где `Time`, `Group` и их взаимодействие являются фиксированными эффектами, а случайные эффекты включают вариации между пациентами и вариации между полями внутри каждого образца.
+
+```R
+library(lme4)
+
+# Модель смешанных эффектов с случайными эффектами для пациентов и полей
+fit <- lmer(CellCount ~ Time * Group + (1 | PatientID) + (1 | PatientID:Field), data = df)
+summary(fit)
+```
+
+В этой модели:
+- `(1 | PatientID)` добавляет случайный перехват для каждого пациента, что позволяет учесть внутриличностную изменчивость.
+- `(1 | PatientID:Field)` добавляет случайный перехват для каждого поля внутри каждого пациента, что позволяет учесть вариации в подсчетах клеток между разными полями одного и того же образца.
+
+### Анализ и интерпретация
+`summary(fit)` предоставит оценки фиксированных эффектов (влияние времени, группы и их взаимодействия), а также оценки дисперсии случайных эффектов. Это поможет понять, какие факторы значимо влияют на количество клеток, и как сильно результаты варьируются между пациентами и полями.
+
+Какие из указанных выше ковариатов являются случайными, а какие представляют фиксированный эффект?
+
+
+В модели смешанных эффектов, как указано в предыдущем примере, различие между случайными и фиксированными эффектами определяется следующим образом:
+
+Фиксированные эффекты:
+Фиксированные эффекты — это основные эффекты, интересующие исследователя, которые предполагается присутствуют во всей популяции. В вашем случае:
+
+Time (Время): Эта переменная измеряет различные временные точки (до операции, после операции, через 3 месяца, через 12 месяцев). Она является фиксированным эффектом, так как интерес представляет сравнение изменений количества клеток в эти различные временные моменты.
+Group (Группа): Эта переменная разделяет пациентов на разные группы (например, контрольная и экспериментальная). Она также является фиксированным эффектом, так как целью является сравнение различий между этими группами.
+Взаимодействие Time * Group: Это взаимодействие позволяет увидеть, отличается ли динамика изменения количества клеток в разные временные точки между различными группами.
+Случайные эффекты:
+Случайные эффекты используются для моделирования внутригрупповой корреляции и вариабельности, которые не объясняются фиксированными эффектами. В вашем случае:
+
+PatientID (Идентификатор пациента): Случайный эффект для каждого пациента позволяет учесть индивидуальные различия между пациентами, которые могут влиять на количество клеток независимо от времени и группы.
+PatientID:Field (Взаимодействие пациента и поля): Этот случайный эффект позволяет каждому полю в каждом образце иметь свою собственную базовую вариабельность. Это учитывает тот факт, что даже в пределах одного и того же образца разные поля могут показывать различное количество клеток.
+Использование этих случайных и фиксированных эффектов в модели позволяет более точно оценить и интерпретировать влияние интересующих факторов на исследуемый ответ, учитывая внутреннюю структуру данных.
+
+
+
+
+
+1. Compare WBC between groups
+You can use a repeated measures ANOVA to compare WBC levels between groups (C, T1, T2) across different time points.
+# Load necessary libraries
+library(tidyverse)
+library(afex)
+
+# Assuming your data is in a data frame called `data` with columns: 
+# 'PatientID', 'Group', 'Time', 'WBC'
+
+# Convert 'Time' and 'Group' to factors
+data$Time <- factor(data$Time, levels = c("Before", "During", "3MonthsAfter", "1YearAfter"))
+data$Group <- factor(data$Group, levels = c("C", "T1", "T2"))
+
+# Perform repeated measures ANOVA
+anova_results <- aov_ez(id = "PatientID", dv = "WBC", data = data, within = "Time", between = "Group")
+
+# View results
+summary(anova_results)
+
+
+2. Check if changes over time are significant within groups
+You can use post-hoc tests to check for significant changes over time within each group.
+# Post-hoc tests for time effect within each group
+library(emmeans)
+
+# Get estimated marginal means
+emm <- emmeans(anova_results, ~ Time | Group)
+
+# Pairwise comparisons
+pairs(emm, adjust = "bonferroni")
+
+
+3. Identify which groups are different
+To find out which groups are different, you can perform post-hoc tests for group comparisons.
+# Post-hoc tests for group effect
+emm_group <- emmeans(anova_results, ~ Group | Time)
+
+# Pairwise comparisons
+pairs(emm_group, adjust = "bonferroni")
+
+
+Verification of Results
+Assumptions Check: Ensure that the assumptions of ANOVA (normality, sphericity) are met. You can use Mauchly's test for sphericity and Shapiro-Wilk test for normality.
+
+Normality Check:
+shapiro.test(residuals(anova_results))
+
+
+Sphericity Check:
+library(car)
+Anova(anova_results, type = "III")
+
+Visualization: Plot the data to visually inspect differences.
+ggplot(data, aes(x = Time, y = WBC, color = Group)) +
+  geom_line(aes(group = PatientID)) +
+  stat_summary(fun = mean, geom = "line", aes(group = Group), size = 1.5) +
+  theme_minimal()
+
+
+
+
+What other methods may be applied?
+In addition to repeated measures ANOVA, you can consider the following methods:
+
+1. Linear Mixed-Effects Models
+These models are flexible and can handle missing data better than ANOVA.
+library(lme4)
+library(lmerTest)
+
+# Fit a linear mixed-effects model
+lmm <- lmer(WBC ~ Group * Time + (1 | PatientID), data = data)
+
+# Summary of the model
+summary(lmm)
+
+
+2. Generalized Estimating Equations (GEE)
+GEE is useful for repeated measures data, especially when the data may not meet the assumptions of ANOVA.
+library(geepack)
+
+# Fit a GEE model
+gee_model <- geeglm(WBC ~ Group * Time, id = PatientID, data = data, family = gaussian)
+
+# Summary of the model
+summary(gee_model)
+
+3. Non-Parametric Tests
+If the data do not meet the assumptions of normality, consider non-parametric tests like the Friedman test for within-group comparisons and Kruskal-Wallis test for between-group comparisons.
+
+# Friedman test for within-group comparisons
+friedman.test(WBC ~ Time | PatientID, data = data)
+
+# Kruskal-Wallis test for between-group comparisons at each time point
+kruskal.test(WBC ~ Group, data = subset(data, Time == "Before"))
+
+4. Bayesian Methods
+Bayesian approaches can provide more nuanced insights, especially with small sample sizes or complex models.
+library(brms)
+
+# Fit a Bayesian mixed-effects model
+bayesian_model <- brm(WBC ~ Group * Time + (1 | PatientID), data = data, family = gaussian)
+
+# Summary of the model
+summary(bayesian_model)
+
+5. Multivariate Analysis
+If you want to consider all time points simultaneously, you can use multivariate analysis techniques like MANOVA.
+# Reshape data for MANOVA
+data_wide <- pivot_wider(data, names_from = Time, values_from = WBC)
+
+# Fit MANOVA
+manova_model <- manova(cbind(Before, During, `3MonthsAfter`, `1YearAfter`) ~ Group, data = data_wide)
+
+# Summary of the model
+summary(manova_model)
+
+
+Interpreting the summary of a Bayesian model fitted with `brms` involves understanding several key components:
+
+### 1. **Fixed Effects**
+
+- **Estimate**: The posterior mean of the parameter. It represents the average effect size.
+- **Est.Error**: The standard error of the estimate, indicating the uncertainty around the estimate.
+- **l-95% CI and u-95% CI**: The lower and upper bounds of the 95% credible interval. This interval contains the true parameter value with 95% probability, given the data and model.
+- **Rhat**: A convergence diagnostic. Values close to 1 indicate good convergence.
+- **Bulk_ESS and Tail_ESS**: Effective sample sizes for the bulk and tail of the posterior distribution. Larger values suggest more reliable estimates.
+
+### 2. **Random Effects**
+
+- **Groups**: Lists the grouping factors (e.g., PatientID).
+- **Std.Dev.**: The standard deviation of the random effects, indicating variability across groups.
+
+### 3. **Model Fit**
+
+- **LOOIC (Leave-One-Out Information Criterion)**: A measure of model fit. Lower values indicate a better fit.
+- **WAIC (Watanabe-Akaike Information Criterion)**: Another measure of model fit, similar to LOOIC.
+
+### 4. **Posterior Predictive Checks**
+
+- Use `pp_check()` to visually assess how well the model predicts the observed data.
+
+### Interpretation Example
+
+Suppose you have a fixed effect for `GroupT1` with an estimate of 2.5, a credible interval of [1.0, 4.0], and an Rhat of 1.0:
+
+- **Estimate**: On average, being in Group T1 is associated with a 2.5 unit increase in WBC compared to the reference group.
+- **Credible Interval**: We are 95% confident that the true effect of Group T1 lies between 1.0 and 4.0.
+- **Rhat**: The model has converged well for this parameter.
+
+### Conclusion
+
+- If the credible interval does not include zero, the effect is considered statistically significant.
+- Assess model fit and convergence diagnostics to ensure reliable results.
+- Use posterior predictive checks to validate the model's predictive performance.
+
+
+Error: Type 'xyz' is not a valid ppc type. Valid types are:
+'bars', 'bars_grouped', 'boxplot', 'dens', 'dens_overlay', 'dens_overlay_grouped', 'ecdf_overlay', 'ecdf_overlay_grouped', 'error_binned', 'error_hist', 'error_hist_grouped', 'error_scatter', 'error_scatter_avg', 'error_scatter_avg_grouped', 'error_scatter_avg_vs_x', 'freqpoly', 'freqpoly_grouped', 'hist', 'intervals', 'intervals_grouped', 'km_overlay', 'km_overlay_grouped', 'loo_intervals', 'loo_pit', 'loo_pit_overlay', 'loo_pit_qq', 'loo_ribbon', 'pit_ecdf', 'pit_ecdf_grouped', 'ribbon', 'ribbon_grouped', 'rootogram', 'scatter', 'scatter_avg', 'scatter_avg_grouped', 'stat', 'stat_2d', 'stat_freqpoly', 'stat_freqpoly_grouped', 'stat_grouped', 'violin_grouped'
+> 
